@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "CustomAuth",
     platforms: [
-        .iOS(.v13)
+        .iOS(.v14)
     ],
     products: [
         .library(

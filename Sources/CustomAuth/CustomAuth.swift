@@ -28,7 +28,7 @@ public struct TorusKeyData {
 /// Provides integration of an iOS app with Torus CustomAuth.
 open class CustomAuth {
     var nodeDetailManager: NodeDetailManager
-    var torusUtils: AbstractTorusUtils
+    var torusUtils: TorusUtils
     var urlSession: URLSession
     var enableOneKey: Bool
     ///  You can pass your own custom url  rather than using our default infura url,
@@ -39,7 +39,7 @@ open class CustomAuth {
     public let subVerifierDetails: [SubVerifierDetails]
     public var authorizeURLHandler: URLOpenerTypes?
     var observer: NSObjectProtocol? // useful for Notifications
-    var network : TorusNetwork
+    var network : Web3AuthNetwork
     
     /// Initiate an CustomAuth instance.
     /// - Parameters:
@@ -49,7 +49,7 @@ open class CustomAuth {
     ///   - factory: Providng mocking by implementing TDSDKFactoryProtocol.
     ///   - network: Etherum network to be used.
     ///   - loglevel: Indicates the log level of this instance. All logs lower than this level will be ignored.
-    public init(web3AuthClientId: String ,aggregateVerifierType: verifierTypes, aggregateVerifier: String, subVerifierDetails: [SubVerifierDetails], network: TorusNetwork, loglevel: OSLogType = .debug, urlSession: URLSession = URLSession.shared, enableOneKey: Bool = false, networkUrl: String? = nil) {
+    public init(web3AuthClientId: String ,aggregateVerifierType: verifierTypes, aggregateVerifier: String, subVerifierDetails: [SubVerifierDetails], network: Web3AuthNetwork, loglevel: OSLogType = .debug, urlSession: URLSession = URLSession.shared, enableOneKey: Bool = false, networkUrl: String? = nil) {
         tsSdkLogType = loglevel
         self.networkUrl = networkUrl
         self.enableOneKey = enableOneKey
@@ -57,7 +57,7 @@ open class CustomAuth {
         self.nodeDetailManager = NodeDetailManager(network: network)
         self.urlSession = urlSession
         
-        self.torusUtils = TorusUtils( loglevel: loglevel, urlSession: urlSession, enableOneKey: enableOneKey, serverTimeOffset: 1000,  network: network, clientId: web3AuthClientId)
+        self.torusUtils = try! TorusUtils(params: TorusOptions(clientId: web3AuthClientId, network: network, serverTimeOffset: 1000, enableOneKey: enableOneKey), loglevel: loglevel)
         
         // verifier details
         self.aggregateVerifier = aggregateVerifier
@@ -71,7 +71,7 @@ open class CustomAuth {
     ///   - aggregateVerifierType: Type of the verifier. Use `singleLogin` for single providers. Only `singleLogin` and `singleIdVerifier` is supported currently.
     ///   - aggregateVerifier: Name of the verifier to be used..
     ///   - subVerifierDetails: Details of each subverifiers to be used.
-    public convenience init(web3AuthClientId: String ,aggregateVerifierType: verifierTypes, aggregateVerifier: String, subVerifierDetails: [SubVerifierDetails], network: TorusNetwork, enableOneKey: Bool = false, networkUrl: String? = nil) {
+    public convenience init(web3AuthClientId: String ,aggregateVerifierType: verifierTypes, aggregateVerifier: String, subVerifierDetails: [SubVerifierDetails], network: Web3AuthNetwork, enableOneKey: Bool = false, networkUrl: String? = nil) {
         //        let factory = CASDKFactory()
         self.init(web3AuthClientId: web3AuthClientId, aggregateVerifierType: aggregateVerifierType, aggregateVerifier: aggregateVerifier, subVerifierDetails: subVerifierDetails, network: network, loglevel: .debug, enableOneKey: enableOneKey, networkUrl: networkUrl)
     }
@@ -223,12 +223,11 @@ open class CustomAuth {
     ///   - userData: Custom data that will be returned with `privateKey` and `publicAddress`.
     /// - Returns: A promise that resolve with a Dictionary that contain at least `privateKey` and `publicAddress` field..
     open func getTorusKey(verifier: String, verifierId: String, idToken: String, userData: [String: Any] = [:]) async throws -> TorusKey {
-        let extraParams = ["verifier_id": verifierId] as [String: Codable]
         let verifierParams = VerifierParams(verifier_id: verifierId)
         do {
             let nodeDetails = try await nodeDetailManager.getNodeDetails(verifier: verifier, verifierID: verifierId)
             // retrieveShares internall checks if network is legacy and calls getPublicAddress if required.
-            let responseFromRetrieveShares : TorusKey = try await torusUtils.retrieveShares(endpoints: nodeDetails.torusNodeEndpoints, torusNodePubs: nodeDetails.torusNodePub, indexes: nodeDetails.torusIndexes, verifier: verifier, verifierParams: verifierParams, idToken: idToken, extraParams: extraParams)
+            let responseFromRetrieveShares : TorusKey = try await torusUtils.retrieveShares(params: RetrieveSharesParams(endpoints: nodeDetails.getTorusNodeEndpoints(), indexes: nodeDetails.getTorusIndexes(), nodePubKeys: nodeDetails.getTorusNodePub(), verifier: verifier, verifierParams: verifierParams, idToken: idToken))
             
             return responseFromRetrieveShares
         } catch {
@@ -244,16 +243,15 @@ open class CustomAuth {
     ///   - subVerifierDetails: An array of verifiers to be used for the aggregate login flow, with their respective token and verifier name.
     /// - Returns: A promise that resolve with a Dictionary that contain at least `privateKey` and `publicAddress` field..
     open func getAggregateTorusKey(verifier: String, verifierId: String, idToken: String, subVerifierDetails: SubVerifierDetails, userData: [String: Any] = [:]) async throws -> TorusKey {
-        let extraParams = ["verifieridentifier": verifier, "verifier_id": verifierId, "sub_verifier_ids": [subVerifierDetails.verifier], "verify_params": [["verifier_id": verifierId, "idtoken": idToken]]] as [String: Codable]
         let hashedOnce = try keccak256(data: Data(idToken.utf8))
         
-        let verifierParams = VerifierParams(verifier_id: verifierId)
+        let verifierParams = VerifierParams(verifier_id: verifierId, sub_verifier_ids: [subVerifierDetails.verifier], verify_params: [VerifyParams(verifier_id: verifierId, idtoken: idToken)])
         
         do {
             let nodeDetails = try await getNodeDetailsFromContract(verifier: verifier, verfierID: verifierId)
             
             // retrieveShares internall checks if network is legacy and calls getPublicAddress if required.
-            let responseFromRetrieveShares :TorusKey =  try await self.torusUtils.retrieveShares(endpoints: nodeDetails.torusNodeEndpoints, torusNodePubs: nodeDetails.torusNodePub, indexes: nodeDetails.torusIndexes, verifier: verifier, verifierParams: verifierParams, idToken: hashedOnce.toHexString(), extraParams: extraParams)
+            let responseFromRetrieveShares :TorusKey =  try await self.torusUtils.retrieveShares(params: RetrieveSharesParams(endpoints: nodeDetails.getTorusNodeEndpoints(), indexes: nodeDetails.getTorusIndexes(), nodePubKeys: nodeDetails.getTorusNodePub(), verifier: verifier, verifierParams: verifierParams, idToken: hashedOnce.hexString))
             
             return responseFromRetrieveShares
         } catch {

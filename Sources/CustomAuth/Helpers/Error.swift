@@ -29,3 +29,5 @@ public enum CASDKError: Error {
         }
     }
 }
+
+extension String: Error {}

@@ -101,7 +101,7 @@ class JWTLoginHandler: AbstractLoginHandler {
                 let data = try JSONSerialization.jsonObject(with: val.0) as? [String: Any] ?? [:]
                 self.userInfo = data
                 if responseParameters["error"] != nil {
-                    throw responseParameters["error"]!
+                    throw CASDKError.getUserInfoFailed
                 }
                 var newData: [String: Any] = ["userInfo": self.userInfo as Any]
                 newData["tokenForKeys"] = responseParameters["id_token"]

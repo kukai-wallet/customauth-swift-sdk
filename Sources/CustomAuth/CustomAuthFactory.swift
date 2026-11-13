@@ -13,7 +13,7 @@ import TorusUtils
 /// A protocol should be implmented by users of `CustomAuth`. It provides a way
 /// to stub or mock the CustomAuth for testing.
 public protocol CASDKFactoryProtocol {
-    func createTorusUtils(loglevel: OSLogType, urlSession: URLSession, enableOneKey: Bool, network: TorusNetwork) -> AbstractTorusUtils
+    func createTorusUtils(loglevel: OSLogType, urlSession: URLSession, enableOneKey: Bool, network: Web3AuthNetwork) -> TorusUtils
 //    func createFetchNodeDetails(network: TorusNetwork, urlSession: URLSession, networkUrl: String?) -> AllNodeDetailsModel
 }
 
